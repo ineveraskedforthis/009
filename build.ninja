@@ -1,0 +1,77 @@
+cpp_compiler = clang++
+cpp_standard = -std=c++20
+optimisation_flag = -O0
+debug_flags = -g -gdwarf-3 -gcodeview
+debug_flags_link = -g -gdwarf-3
+
+includes = -I./glfw/include -I./glew-cmake/include -I./imgui -I./glm
+libs = -l./glfw/build/src/glfw3 -l./glew-cmake/build/lib/libglew32d -lUser32.lib -lShell32 -lGdi32 -lopengl32
+
+rule ccpp
+  command = $cpp_compiler $cpp_standard $optimisation_flag $debug_flags -MD -MF $out.d $includes -c $in -o $out
+  description = compile $out
+  depfile = $out.d
+
+rule link
+  command = $cpp_compiler $cpp_standard $debug_flags_link $in $libs -o $out -Xlinker /subsystem:console
+  description = link $out
+
+rule clone_glfw
+  command = cmd /c "git clone https://github.com/glfw/glfw.git && touch flags/glfw_cloned"
+
+rule configure_glfw
+  command = cmd /c "cd glfw && mkdir build & cd build && cmake .. -G "Ninja" -D CMAKE_C_COMPILER=clang -D CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded && touch ../../flags/glfw_configured"
+
+rule build_glfw
+  command = cmd /c "cd glfw/build && cmake --build ."
+
+rule clone_glew
+  command = cmd /c "git clone https://github.com/Perlmint/glew-cmake.git && touch flags/glew_cloned"
+
+rule configure_glew
+  command = cmd /c "cd glew-cmake && cd build && cmake ./cmake -G "Ninja" -D CMAKE_C_COMPILER=clang -D CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded && touch ../../flags/glew_configured"
+
+rule build_glew
+  command = cmd /c "cd glew-cmake/build && cmake --build ."
+
+rule clone_glm
+  command = cmd /c "git clone https://github.com/g-truc/glm.git && touch flags/glm_cloned"
+
+rule clone_imgui
+  command = cmd /c "git clone https://github.com/ocornut/imgui.git && touch flags/imgui_cloned"
+
+build flags/glfw_cloned : clone_glfw
+build flags/glfw_configured : configure_glfw
+build glfw/build/src/glfw3.lib : build_glfw flags/glfw_configured
+
+build flags/glew_cloned : clone_glew
+build flags/glew_configured : configure_glew
+build glew-cmake/build/lib/glew32d.lib : build_glew flags/glew_configured
+
+build flags/glm_cloned : clone_glm
+
+build flags/imgui_cloned : clone_imgui
+
+build imgui/imgui.cpp : phony flags/imgui_cloned
+build imgui/imgui_draw.cpp : phony flags/imgui_cloned
+build imgui/imgui_demo.cpp : phony flags/imgui_cloned
+build imgui/imgui_tables.cpp : phony flags/imgui_cloned
+build imgui/imgui_widgets.cpp : phony flags/imgui_cloned
+build imgui/backends/imgui_impl_glfw.cpp : phony flags/imgui_cloned
+build imgui/backends/imgui_impl_opengl3.cpp : phony flags/imgui_cloned
+build imgui/misc/cpp/imgui_stdlib.cpp : phony flags/imgui_cloned
+
+build cache/imgui.o: ccpp imgui/imgui.cpp | flags/imgui_cloned
+build cache/imgui_draw.o: ccpp imgui/imgui_draw.cpp | flags/imgui_cloned
+build cache/imgui_demo.o: ccpp imgui/imgui_demo.cpp | flags/imgui_cloned
+build cache/imgui_tables.o: ccpp imgui/imgui_tables.cpp | flags/imgui_cloned
+build cache/imgui_widgets.o: ccpp imgui/imgui_widgets.cpp | flags/imgui_cloned
+build cache/imgui_backend.o: ccpp imgui/backends/imgui_impl_glfw.cpp | flags/imgui_cloned
+build cache/imgui_backend_gl.o: ccpp imgui/backends/imgui_impl_opengl3.cpp | flags/imgui_cloned
+build cache/imgui_stdlib.o: ccpp imgui/misc/cpp/imgui_stdlib.cpp | flags/imgui_cloned
+
+build cache/stb.o : ccpp stb_image/stb_image.c
+
+build cache/main.o : ccpp main.cpp | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib flags/glm_cloned
+
+build 009.exe : link cache/main.o cache/stb.o cache/imgui_stdlib.o cache/imgui_backend_gl.o cache/imgui_backend.o cache/imgui_widgets.o cache/imgui_tables.o cache/imgui_demo.o cache/imgui_draw.o cache/imgui.o | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib
