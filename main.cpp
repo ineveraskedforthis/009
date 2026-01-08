@@ -1,5 +1,4 @@
 #include "data_ids.hpp"
-#include "imgui.h"
 #include <assert.h>
 #define GLEW_STATIC
 #include <GL/glew.h>
@@ -71,6 +70,23 @@ struct state {
 
 	int price_update_tick = 0;
 };
+
+std::string get_name (state& game, dcon::commodity_id commodity) {
+	if (game.potion == commodity) {
+		return "Potion";
+	} else if (game.coins == commodity) {
+		return  "Coins";
+	} else if (game.potion_material == commodity) {
+		return "Potion material";
+	} else if (game.raw_food == commodity) {
+		return  "Food ingredients";
+	} else if (game.prepared_food == commodity) {
+		return  "Food";
+	} else if (game.weapon_service == commodity) {
+		return "Weapon service";
+	}
+	return "Unknown " + std::to_string(commodity.index());
+}
 
 void transaction(state& game, dcon::character_id A, dcon::character_id B, dcon::commodity_id C, float amount) {
 	assert(amount >= 0.f);
@@ -399,6 +415,7 @@ game.data.character_resize_skills(256);
 		game.data.character_set_hp_max(hunter, 100);
 		game.data.character_set_ai_type(hunter, game.personality.hunter);
 		game.data.character_set_weapon_quality(hunter, 1.f);
+		game.data.character_set_inventory(hunter, game.coins, 10);
 	}
 
 	{
@@ -408,7 +425,7 @@ game.data.character_resize_skills(256);
 		game.data.building_set_building_model(inn, game.inn);
 
 		auto innkeeper = game.data.create_character();
-		game.data.character_set_inventory(innkeeper, game.coins, 10);
+		game.data.character_set_inventory(innkeeper, game.coins, 100);
 		game.data.character_set_ai_type(innkeeper, game.personality.innkeeper);
 		game.data.character_set_skills(innkeeper, game.skills.cooking, 0.3f);
 
@@ -513,6 +530,7 @@ void update(state& game) {
 	// buy things you desire and miss
 
 	// currently we can buy things only from the favourite shop:
+
 	for (int round = 0; round < 3; round++) {
 		game.data.for_each_character([&](auto cid) {
 			game.data.for_each_commodity([&](auto commodity) {
@@ -543,6 +561,7 @@ void update(state& game) {
 				auto price_shop_sell = game.data.character_get_price_belief_sell(shop_owner, commodity);
 				auto price_shop_buy = game.data.character_get_price_belief_buy(shop_owner, commodity);
 
+				auto bottom_price = game.data.character_get_price_belief_buy(cid, game.prepared_food) / 5.f;
 
 
 				if (target > inventory) {
@@ -576,7 +595,7 @@ void update(state& game) {
 					}
 				}
 
-				if (target < inventory) {
+				if (target < inventory && price_shop_buy > bottom_price) {
 					// printf("I do not need this? %d %f %f %f\n", commodity.index(), desired_price_sell, price_shop_buy, in_stock );
 
 					if (price_shop_buy >= desired_price_sell && inventory >= 1.f && coins_shop >= price_shop_buy) {
@@ -957,6 +976,7 @@ int main(void)
 	style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
 	style.FontScaleDpi = main_scale;        // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
 
+
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
@@ -1018,6 +1038,9 @@ int main(void)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+
+		const float TEXT_BASE_HEIGHT = ImGui::GetTextLineHeightWithSpacing();
+
 		{
 			static float f = 0.0f;
 			static int counter = 0;
@@ -1044,11 +1067,53 @@ int main(void)
 
 			ImGui::Begin("Characters");
 
-			world.data.for_each_character([&](dcon::character_id cid){
-				ImGui::Separator();
-				ImGui::Text("Character %d", cid.index());
-				ImGui::Text("Money: %f", world.data.character_get_inventory(cid, world.coins));
-			});
+			ImGui::Text("Inventory");
+			static ImGuiTableFlags flags =
+				ImGuiTableFlags_ScrollY
+				| ImGuiTableFlags_RowBg
+				| ImGuiTableFlags_BordersOuter
+				| ImGuiTableFlags_BordersV
+				| ImGuiTableFlags_Resizable
+				| ImGuiTableFlags_Reorderable
+				| ImGuiTableFlags_Hideable;
+
+			ImVec2 outer_size = ImVec2(0.0f, TEXT_BASE_HEIGHT * 20);
+			if (ImGui::BeginTable("table_scrolly", world.data.commodity_size() + 1, flags, outer_size)) {
+				ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
+
+				ImGui::TableSetupColumn("Character", ImGuiTableColumnFlags_None);
+
+				world.data.for_each_commodity([&](auto commodity) {
+					ImGui::TableSetupColumn(
+						game::get_name(world, commodity).c_str(),
+						ImGuiTableColumnFlags_None
+					);
+				});
+
+				ImGui::TableHeadersRow();
+
+				// Demonstrate using clipper for large vertical lists
+				ImGuiListClipper clipper;
+				clipper.Begin(1000);
+				while (clipper.Step()) {
+					world.data.for_each_character([&](dcon::character_id cid){
+						if (cid.index() >= clipper.DisplayStart && cid.index() < clipper.DisplayEnd) {
+							ImGui::TableNextRow();
+
+							ImGui::TableSetColumnIndex(0);
+							ImGui::Text("Character %d", cid.index());
+
+							int column = 1;
+							world.data.for_each_commodity([&](auto commodity) {
+								ImGui::TableSetColumnIndex(column);
+								ImGui::Text("%f", world.data.character_get_inventory(cid, commodity));
+								column++;
+							});
+						}
+					});
+				}
+				ImGui::EndTable();
+			}
 
 			ImGui::End();
 		}

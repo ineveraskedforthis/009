@@ -12,3 +12,4 @@ cache*
 .ninja_log
 data.hpp
 data_ids.hpp
+compile_commands.json
