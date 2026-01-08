@@ -3,8 +3,10 @@ cpp_standard = -std=c++20
 optimisation_flag = -O0
 debug_flags = -g -gdwarf-3 -gcodeview
 debug_flags_link = -g -gdwarf-3
+dcon_includes_common = -I./DataContainer/CommonIncludes
+dcon_includes = -I./DataContainer/DataContainerGenerator
 
-includes = -I./glfw/include -I./glew-cmake/include -I./imgui -I./glm
+includes = -I./glfw/include -I./glew-cmake/include -I./imgui -I./glm $dcon_includes_common
 libs = -l./glfw/build/src/glfw3 -l./glew-cmake/build/lib/libglew32d -lUser32.lib -lShell32 -lGdi32 -lopengl32
 
 rule ccpp
@@ -15,6 +17,16 @@ rule ccpp
 rule link
   command = $cpp_compiler $cpp_standard $debug_flags_link $in $libs -o $out -Xlinker /subsystem:console
   description = link $out
+
+rule clone_dcon
+  command = cmd /c "(git clone -b to_upstream --single-branch https://github.com/ineveraskedforthis/DataContainer.git) || (cd DataContainer && git pull origin master && cd ..) && touch flags/dcon_cloned"
+
+rule compile_dcon
+  command = $cpp_compiler $cpp_standard $dcon_includes $dcon_includes_common -ferror-limit=1 DataContainer/DataContainerGenerator/DataContainerGenerator.cpp DataContainer/DataContainerGenerator/parsing.cpp DataContainer/DataContainerGenerator/code_fragments.cpp DataContainer/DataContainerGenerator/query_fragments.cpp DataContainer/DataContainerGenerator/object_member_fragments.cpp DataContainer/DataContainerGenerator/serialize_fragments.cpp -o $out
+
+rule use
+  command = ./DCON $in
+  restat = 1
 
 rule clone_glfw
   command = cmd /c "git clone https://github.com/glfw/glfw.git && touch flags/glfw_cloned"
@@ -41,11 +53,11 @@ rule clone_imgui
   command = cmd /c "git clone https://github.com/ocornut/imgui.git && touch flags/imgui_cloned"
 
 build flags/glfw_cloned : clone_glfw
-build flags/glfw_configured : configure_glfw
+build flags/glfw_configured : configure_glfw flags/glfw_cloned
 build glfw/build/src/glfw3.lib : build_glfw flags/glfw_configured
 
 build flags/glew_cloned : clone_glew
-build flags/glew_configured : configure_glew
+build flags/glew_configured : configure_glew flags/glew_cloned
 build glew-cmake/build/lib/glew32d.lib : build_glew flags/glew_configured
 
 build flags/glm_cloned : clone_glm
@@ -72,6 +84,11 @@ build cache/imgui_stdlib.o: ccpp imgui/misc/cpp/imgui_stdlib.cpp | flags/imgui_c
 
 build cache/stb.o : ccpp stb_image/stb_image.c
 
-build cache/main.o : ccpp main.cpp | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib flags/glm_cloned
+build flags/dcon_cloned : clone_dcon
+build DCON : compile_dcon flags/dcon_cloned
+build data.hpp | data_ids.hpp : use ./data.txt | DCON
+build cache/dcon_common.o : ccpp DataContainer/CommonIncludes/common_types.cpp | flags/dcon_cloned
 
-build 009.exe : link cache/main.o cache/stb.o cache/imgui_stdlib.o cache/imgui_backend_gl.o cache/imgui_backend.o cache/imgui_widgets.o cache/imgui_tables.o cache/imgui_demo.o cache/imgui_draw.o cache/imgui.o | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib
+build cache/main.o : ccpp main.cpp | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib flags/glm_cloned data.hpp
+
+build 009.exe : link cache/main.o cache/dcon_common.o cache/stb.o cache/imgui_stdlib.o cache/imgui_backend_gl.o cache/imgui_backend.o cache/imgui_widgets.o cache/imgui_tables.o cache/imgui_demo.o cache/imgui_draw.o cache/imgui.o | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib

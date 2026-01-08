@@ -10,3 +10,5 @@ cache*
 *.pdb
 *.exe
 .ninja_log
+data.hpp
+data_ids.hpp
