@@ -16,6 +16,18 @@ object{
 		name{nutrition}
 		type{float}
 	}
+	property{
+		name{size}
+		type{float}
+	}
+	property{
+		name{vao}
+		type{uint32_t}
+	}
+	property{
+		name{triangles_count}
+		type{uint32_t}
+	}
 }
 
 object{
@@ -206,6 +218,22 @@ relationship{
 		object{thing}
 		name{body}
 		type{unique}
+	}
+}
+
+relationship{
+	name{follow_target}
+	size{30000}
+	storage_type{erasable}
+	link{
+		object{thing}
+		name{follower}
+		type{unique}
+	}
+	link{
+		object{thing}
+		name{followed}
+		type{many}
 	}
 }
 

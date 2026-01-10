@@ -1,7 +1,9 @@
 #include "data_ids.hpp"
+#define GLM_FORCE_SWIZZLE
+#define GLEW_STATIC
+
 #include <array>
 #include <assert.h>
-#define GLEW_STATIC
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <stdexcept>
@@ -14,7 +16,6 @@
 #include <vector>
 #include <random>
 
-#define GLM_FORCE_SWIZZLE
 
 #include "stb_image/stb_image.h"
 
@@ -94,6 +95,14 @@ void set_height(map_state& data, int x, int y, char value) {
 	data.height[c_x * WORLD_SIZE_TILES + c_y] = value;
 }
 
+struct kinds {
+	dcon::kind_id human;
+	dcon::kind_id potion_flower;
+	dcon::kind_id meatbug_queen;
+	dcon::kind_id meatbug;
+	dcon::kind_id tree;
+};
+
 struct state {
 	dcon::data_container data;
 	uint32_t time;
@@ -114,6 +123,7 @@ struct state {
 	skill_ids skills;
 	ai_state ai;
 	ai_personality personality;
+	kinds special_kinds;
 
 	int price_update_tick = 0;
 
@@ -121,6 +131,7 @@ struct state {
 
 	std::default_random_engine rng {};
 	std::uniform_real_distribution<float> uniform{0.0, 1.0};
+	std::normal_distribution<float> normal {0.f, 1.f};
 };
 
 std::string get_name (state& game, dcon::commodity_id commodity) {
@@ -190,7 +201,7 @@ move_result move_to(state& game, dcon::thing_id cid, float target_x, float targe
 	auto y = game.data.thing_get_y(cid);
 	auto dx = target_x - x;
 	auto dy = target_y - y;
-	auto distance = abs(dx) + abs(dy);
+	auto distance = sqrtf(dx * dx + dy * dy);
 
 	if (distance < speed) {
 		game.data.thing_set_x(cid, target_x);
@@ -587,13 +598,33 @@ void init(state& game) {
 	game.shop = game.data.create_building_model();
 	game.shop_weapon = game.data.create_building_model();
 
-	auto human = game.data.create_kind();
-	auto rat = game.data.create_kind();
-	auto meatbug = game.data.create_kind();
+	game.special_kinds.human = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.human, 1.f);
+	game.data.kind_set_speed(game.special_kinds.human, 1.f);
 
-	game.data.force_create_food_hierarchy(human, meatbug);
-	game.data.force_create_food_hierarchy(human, rat);
-	game.data.force_create_food_hierarchy(rat, meatbug);
+	auto rat = game.data.create_kind();
+	game.data.kind_set_size(rat, 0.5f);
+	game.data.kind_set_speed(rat, 0.8f);
+
+	game.special_kinds.meatbug = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.meatbug, 0.1f);
+	game.data.kind_set_speed(game.special_kinds.meatbug, 0.2f);
+
+	game.special_kinds.meatbug_queen = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.meatbug_queen, 2.f);
+	game.data.kind_set_speed(game.special_kinds.meatbug_queen, 0.1f);
+
+	game.special_kinds.potion_flower = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.potion_flower, 0.1f);
+	game.data.kind_set_speed(game.special_kinds.potion_flower, 0.f);
+
+	game.special_kinds.tree = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.tree, 0.2f);
+	game.data.kind_set_speed(game.special_kinds.tree, 0.f);
+
+	game.data.force_create_food_hierarchy(game.special_kinds.human, game.special_kinds.meatbug);
+	game.data.force_create_food_hierarchy(game.special_kinds.human, rat);
+	game.data.force_create_food_hierarchy(rat, game.special_kinds.meatbug);
 
 	{
 		game.personality.hunter = game.data.create_ai_model();
@@ -651,7 +682,7 @@ void init(state& game) {
 	for (int i = 0; i < 4; i++) {
 		auto hunter = game.data.create_character();
 		auto hunter_body = game.data.create_thing();
-		game.data.thing_set_kind(hunter_body, human);
+		game.data.thing_set_kind(hunter_body, game.special_kinds.human);
 		game.data.force_create_embodiment(hunter, hunter_body);
 		game.data.thing_set_hp(hunter_body, 100);
 		game.data.thing_set_hp_max(hunter_body, 100);
@@ -668,6 +699,7 @@ void init(state& game) {
 
 		auto innkeeper = game.data.create_character();
 		auto innkeeper_body = game.data.create_thing();
+		game.data.thing_set_kind(innkeeper_body, game.special_kinds.human);
 		game.data.force_create_embodiment(innkeeper, innkeeper_body);
 		game.data.character_set_inventory(innkeeper, game.coins, 100);
 		game.data.character_set_ai_type(innkeeper, game.personality.innkeeper);
@@ -682,6 +714,7 @@ void init(state& game) {
 		game.data.building_set_building_model(shop, game.shop);
 		auto shop_owner = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(shop_owner, body);
 		game.data.character_set_inventory(shop_owner, game.coins, 100);
 		game.data.character_set_ai_type(shop_owner, game.personality.shopkeeper);
@@ -695,6 +728,7 @@ void init(state& game) {
 		game.data.building_set_building_model(shop_weapons, game.shop_weapon);
 		auto weapon_master = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(weapon_master, body);
 		game.data.character_set_inventory(weapon_master, game.coins, 10);
 		game.data.character_set_ai_type(weapon_master, game.personality.weapon_master);
@@ -705,6 +739,7 @@ void init(state& game) {
 	for (int i = 0; i < 2; i++) {
 		auto alchemist = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(alchemist, body);
 		game.data.character_set_inventory(alchemist, game.coins, 100);
 		game.data.character_set_ai_type(alchemist, game.personality.alchemist);
@@ -713,6 +748,7 @@ void init(state& game) {
 	for (int i = 0; i < 2; i++) {
 		auto herbalist = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(herbalist, body);
 		game.data.character_set_ai_type(herbalist, game.personality.herbalist);
 	}
@@ -739,14 +775,29 @@ void init(state& game) {
 		});
 	});
 
-	for (int i = 0; i < 1000; i++) {
-		auto critter = game.data.create_thing();
-		game.data.thing_set_kind(critter, meatbug);
-		game.data.thing_set_hp(critter, 30);
-		game.data.thing_set_hp_max(critter, 30);
-		game.data.thing_set_x(critter, game.uniform(game.rng) * 100.f - 50.f);
-		game.data.thing_set_y(critter, game.uniform(game.rng) * 100.f - 50.f);
-		game.data.thing_set_direction(critter, game.uniform(game.rng) * glm::pi<float>() * 2);
+	for (int i = 0; i < 50; i++) {
+		auto queen = game.data.create_thing();
+		game.data.thing_set_kind(queen, game.special_kinds.meatbug_queen);
+		game.data.thing_set_hp(queen, 300);
+		game.data.thing_set_hp_max(queen, 30);
+		game.data.thing_set_x(queen, game.uniform(game.rng) * 100.f - 50.f);
+		game.data.thing_set_y(queen, game.uniform(game.rng) * 100.f - 50.f);
+		game.data.thing_set_direction(queen, game.uniform(game.rng) * glm::pi<float>() * 2);
+	}
+
+	// spawn trees
+
+	auto forest_x = 30.f;
+	auto forest_y = 30.f;
+
+	for (int i = 0; i < 50; i++) {
+		auto thing = game.data.create_thing();
+		game.data.thing_set_kind(thing, game.special_kinds.tree);
+		game.data.thing_set_hp(thing, 30);
+		game.data.thing_set_hp_max(thing, 30);
+		game.data.thing_set_x(thing, game.normal(game.rng) * 10.f  + forest_x);
+		game.data.thing_set_y(thing, game.normal(game.rng) * 10.f  + forest_y);
+		game.data.thing_set_direction(thing, game.uniform(game.rng) * glm::pi<float>() * 2);
 	}
 }
 
@@ -1015,13 +1066,17 @@ void update(state& game) {
 		auto x = game.data.thing_get_x(critter);
 		auto y = game.data.thing_get_y(critter);
 		auto alpha = game.data.thing_get_direction(critter);
-		auto dx = ve::apply([&](float x){return cos(x);}, alpha);
-		auto dy = ve::apply([&](float x){return sin(x);}, alpha);
-		dx = ve::select(soul == dcon::character_id{}, 0.f, dx * 0.05f);
-		dy = ve::select(soul == dcon::character_id{}, 0.f, dy * 0.05f);
-		game.data.thing_set_x(critter, x + dx);
-		game.data.thing_set_y(critter, y + dy);
+		auto dx = ve::apply([&](float alpha_v){return sin(alpha_v);}, alpha);
+		auto dy = ve::apply([&](float alpha_v){return -cos(alpha_v);}, alpha);
+		dx = ve::select(soul == dcon::character_id{}, dx * 0.05f, 0.f);
+		dy = ve::select(soul == dcon::character_id{}, dy * 0.05f, 0.f);
+		auto kind = game.data.thing_get_kind(critter);
+		auto speed = game.data.kind_get_speed(kind);
+		game.data.thing_set_x(critter, x + dx * speed);
+		game.data.thing_set_y(critter, y + dy * speed);
 	});
+
+	std::vector<dcon::thing_id> will_give_birth {};
 
 	game.data.for_each_thing([&](auto critter){
 		auto soul = game.data.thing_get_embodier_from_embodiment(critter);
@@ -1029,7 +1084,24 @@ void update(state& game) {
 			auto alpha = game.data.thing_get_direction(critter);
 			game.data.thing_set_direction(critter, alpha + 0.1f * game.uniform(game.rng) - 0.05f);
 		}
+
+		auto kind = game.data.thing_get_kind(critter);
+		if (kind == game.special_kinds.meatbug_queen) {
+			if (game.uniform(game.rng) < 0.01f) {
+				will_give_birth.push_back(critter);
+			}
+		}
 	});
+
+	for (auto& mother : will_give_birth) {
+		auto child = game.data.create_thing();
+		game.data.thing_set_kind(child, game.special_kinds.meatbug);
+		game.data.thing_set_hp(child, 30);
+		game.data.thing_set_hp_max(child, 30);
+		game.data.thing_set_x(child, game.data.thing_get_x(mother));
+		game.data.thing_set_y(child, game.data.thing_get_y(mother));
+		game.data.force_create_follow_target(child, mother);
+	}
 }
 
 }
@@ -1267,7 +1339,50 @@ base_triangle create_triangle() {
 	return {vao, vbo};
 }
 
+static std::vector<game::vertex> tree_mesh;
 
+base_triangle create_tree() {
+	tree_mesh.clear();
+	int quality = 4;
+	float angle_step = 2.f * glm::pi<float>() / (float)quality;
+
+	for (int i = 0; i < quality; i++) {
+		float angle = (float)(i) * angle_step;
+		float next_angle = (float)(i + 1) * angle_step;
+		glm::vec3 left_bottom = {cos(angle), sin(angle), 0.f};
+		glm::vec3 right_bottom = {cos(next_angle), sin(next_angle),  0.f};
+		glm::vec3 top = {0.f, 0.f, 20.f};
+
+		auto top_to_left = left_bottom - top;
+		auto top_to_right = right_bottom - top;
+		auto normal = glm::cross(top_to_left, top_to_right);
+
+		tree_mesh.push_back({{left_bottom.x, left_bottom.y, left_bottom.z}, normal, {}});
+		tree_mesh.push_back({{right_bottom.x, right_bottom.y, right_bottom.z}, normal, {}});
+		tree_mesh.push_back({{top.x, top.y, top.z}, normal, {}});
+	}
+
+	GLuint vbo;
+	glGenBuffers(1, &vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, tree_mesh.size() * sizeof(game::vertex), tree_mesh.data(), GL_STATIC_DRAW);
+
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(0));
+
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3));
+
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3 + sizeof(float) * 3));
+
+	return {vao, vbo};
+}
 
 void generate_mesh_from_heightmap(game::map_state& data, int chunk_x, int chunk_y) {
 
@@ -1500,6 +1615,8 @@ int main(void)
 
 
 	auto triangle = create_triangle();
+	auto tree = create_tree();
+
 
 	// setting up a basic shader
 	std::string shader_2d_vertex_path = "./shaders/basic_shader_flat.vert";
@@ -1614,6 +1731,17 @@ int main(void)
 	assert_no_errors();
 
 	game::init(world);
+
+
+	world.data.kind_set_vao(world.special_kinds.human, triangle.vao);
+	world.data.kind_set_vao(world.special_kinds.meatbug, triangle.vao);
+	world.data.kind_set_vao(world.special_kinds.meatbug_queen, triangle.vao);
+	world.data.kind_set_vao(world.special_kinds.tree, tree.vao);
+
+	world.data.kind_set_triangles_count(world.special_kinds.human, triangle_mesh.size());
+	world.data.kind_set_triangles_count(world.special_kinds.meatbug, triangle_mesh.size());
+	world.data.kind_set_triangles_count(world.special_kinds.meatbug_queen, triangle_mesh.size());
+	world.data.kind_set_triangles_count(world.special_kinds.tree, tree_mesh.size());
 
 	for (int i = 0; i < game::WORLD_AREA_TILES; i++) {
 		world.map.height[i] = 0;
@@ -1910,15 +2038,18 @@ int main(void)
 				}
 				glm::mat4 model (1.f);
 				model = glm::translate(model, {world.data.thing_get_x(cid), world.data.thing_get_y(cid), 0.f});
-				if (!soul) {
-					model = glm::scale(model, {0.3f, 0.3f, 0.1f});
-				}
+
+				auto kind = world.data.thing_get_kind(cid);
+				auto size = world.data.kind_get_size(kind);
+				model = glm::scale(model, {size, size, 1.f});
+				auto rotation = world.data.thing_get_direction(cid);
+				model = glm::rotate(model, rotation, glm::vec3{0.f, 0.f, 1.f});
 				glUniformMatrix4fv(shadow_model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
-				glBindVertexArray(triangle.vao);
+				glBindVertexArray(world.data.kind_get_vao(kind));
 				glDrawArrays(
 					GL_TRIANGLES,
 					0,
-					triangle_mesh.size()
+					world.data.kind_get_triangles_count(kind)
 				);
 			});
 		}
@@ -1985,17 +2116,22 @@ int main(void)
 			glm::mat4 model (1.f);
 			model = glm::translate(model, {world.data.thing_get_x(cid), world.data.thing_get_y(cid), 0.f});
 			if (!soul) {
-				model = glm::scale(model, {0.3f, 0.3f, 0.1f});
 				glUniform3fv(albedo_location, 1, albedo_critter);
 			} else {
 				glUniform3fv(albedo_location, 1, albedo_character);
 			}
+
+			auto kind = world.data.thing_get_kind(cid);
+			auto size = world.data.kind_get_size(kind);
+			model = glm::scale(model, {size, size, 1.f});
+			auto rotation = world.data.thing_get_direction(cid);
+			model = glm::rotate(model, rotation, glm::vec3{0.f, 0.f, 1.f});
 			glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
-			glBindVertexArray(triangle.vao);
+			glBindVertexArray(world.data.kind_get_vao(kind));
 			glDrawArrays(
 				GL_TRIANGLES,
 				0,
-				triangle_mesh.size()
+				world.data.kind_get_triangles_count(kind)
 			);
 		});
 
