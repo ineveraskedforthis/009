@@ -10,12 +10,12 @@ includes = -I./glfw/include -I./glew-cmake/include -I./imgui -I./glm $dcon_inclu
 libs = -l./glfw/build/src/glfw3 -l./glew-cmake/build/lib/libglew32d -lUser32.lib -lShell32 -lGdi32 -lopengl32
 
 rule ccpp
-  command = $cpp_compiler $cpp_standard $optimisation_flag $debug_flags -MD -MF $out.d $includes -c $in -o $out
+  command = $cpp_compiler $cpp_standard $optimisation_flag $debug_flags -mavx2 -MD -MF $out.d $includes -c $in -o $out
   description = compile $out
   depfile = $out.d
 
 rule link
-  command = $cpp_compiler $cpp_standard $debug_flags_link $in $libs -o $out -Xlinker /subsystem:console
+  command = $cpp_compiler $cpp_standard $debug_flags_link $in $libs -mavx2 -o $out -Xlinker /subsystem:console
   description = link $out
 
 rule clone_dcon
@@ -88,7 +88,8 @@ build flags/dcon_cloned : clone_dcon
 build DCON : compile_dcon flags/dcon_cloned
 build data.hpp | data_ids.hpp : use ./data.txt | DCON
 build cache/dcon_common.o : ccpp DataContainer/CommonIncludes/common_types.cpp | flags/dcon_cloned
+build cache/frustum.o : ccpp frustum.cpp | flags/glm_cloned
 
 build cache/main.o : ccpp main.cpp | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib flags/glm_cloned data.hpp
 
-build 009.exe : link cache/main.o cache/dcon_common.o cache/stb.o cache/imgui_stdlib.o cache/imgui_backend_gl.o cache/imgui_backend.o cache/imgui_widgets.o cache/imgui_tables.o cache/imgui_demo.o cache/imgui_draw.o cache/imgui.o | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib
+build 009.exe : link cache/main.o cache/frustum.o cache/dcon_common.o cache/stb.o cache/imgui_stdlib.o cache/imgui_backend_gl.o cache/imgui_backend.o cache/imgui_widgets.o cache/imgui_tables.o cache/imgui_demo.o cache/imgui_draw.o cache/imgui.o | glfw/build/src/glfw3.lib glew-cmake/build/lib/glew32d.lib

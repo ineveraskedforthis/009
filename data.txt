@@ -72,9 +72,10 @@ object{
 }
 
 object{
-	name{character}
+	name{thing}
 	size{30000}
 	storage_type{erasable}
+
 	property{
 		name{x}
 		type{float}
@@ -88,12 +89,51 @@ object{
 		type{int}
 	}
 	property{
-		name{weapon_quality}
+		name{hp_max}
+		type{int}
+	}
+	property{
+		name{direction}
 		type{float}
 	}
 	property{
-		name{hp_max}
-		type{int}
+		name{kind}
+		type{kind_id}
+	}
+	property{
+		name{hunger}
+		type{float}
+	}
+}
+
+relationship{
+	name{food_hierarchy}
+	size{30000}
+	storage_type{erasable}
+	link{
+		object{kind}
+		name{consumer}
+		type{many}
+	}
+	link{
+		object{kind}
+		name{consumed}
+		type{many}
+	}
+	composite_key{
+		name{consumption_pair}
+		index{consumer}
+		index{consumed}
+	}
+}
+
+object{
+	name{character}
+	size{30000}
+	storage_type{erasable}
+	property{
+		name{weapon_quality}
+		type{float}
 	}
 	property{
 		name{inventory}
@@ -106,10 +146,6 @@ object{
 	property{
 		name{price_belief_sell}
 		type{array{commodity_id}{float}}
-	}
-	property{
-		name{hunger}
-		type{float}
 	}
 	property{
 		name{mood}
@@ -132,11 +168,6 @@ object{
                 type{ai_model_id}
         }
 	property{
-		name{kind}
-		type{kind_id}
-	}
-
-	property{
 		name{favourite_shop}
 		type{building_id}
 	}
@@ -148,7 +179,6 @@ object{
 		name{favourite_shop_weapons}
 		type{building_id}
 	}
-
 	property{
 		name{delivers_for_first}
 		type{character_id}
@@ -164,12 +194,44 @@ object{
 }
 
 relationship{
+	name{embodiment}
+	size{30000}
+	storage_type{erasable}
+	link{
+		object{character}
+		name{embodier}
+		type{unique}
+	}
+	link{
+		object{thing}
+		name{body}
+		type{unique}
+	}
+}
+
+relationship{
+	name{hunt_target}
+	size{30000}
+	storage_type{erasable}
+	link{
+		object{thing}
+		name{hunter}
+		type{unique}
+	}
+	link{
+		object{thing}
+		name{hunted}
+		type{many}
+	}
+}
+
+relationship{
 	name{guest}
 	size{3000}
 	storage_type{erasable}
 
 	link{
-		object{character}
+		object{thing}
 		name{guest}
 		type{unique}
 	}
