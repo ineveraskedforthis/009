@@ -447,7 +447,7 @@ bool desire_weapon_repair(state& game, dcon::character_id cid, dcon::character_i
 	return true;
 }
 
-bool hunter_desire_buy_food(state& game, dcon::character_id cid) {
+bool desire_buy_food(state& game, dcon::character_id cid) {
 	auto ai_type = game.data.character_get_ai_type(cid);
 	auto food = game.data.character_get_inventory(cid, game.prepared_food);
 	auto food_target = game.data.ai_model_get_stockpile_target(ai_type,  game.prepared_food);
@@ -474,9 +474,102 @@ bool hunter_desire_buy_food(state& game, dcon::character_id cid) {
 	return true;
 }
 
+bool hunter_desire_shopping(state& game, dcon::character_id cid) {
+	auto ai_type = game.data.character_get_ai_type(cid);
+
+	auto loot  = game.data.character_get_inventory(cid, game.raw_food);
+	auto loot_target = game.data.ai_model_get_stockpile_target(ai_type, game.raw_food);
+
+	auto bottom_price = game.data.character_get_price_belief_buy(cid, game.prepared_food) / 5.f;
+
+	auto favourite_shop = game.data.character_get_favourite_shop(cid);
+	auto favourute_shopkeeper = game.data.building_get_owner_from_ownership(favourite_shop);
+	auto price_shop_buy = game.data.character_get_price_belief_buy(favourute_shopkeeper, game.raw_food);
+
+	return (loot - loot_target > 3 && price_shop_buy > bottom_price);
+}
+
+bool alchemist_desire_shopping(state& game, dcon::character_id cid) {
+	auto ai_type = game.data.character_get_ai_type(cid);
+
+	auto produced  = game.data.character_get_inventory(cid, game.potion);
+	auto produced_target = game.data.ai_model_get_stockpile_target(ai_type, game.potion);
+
+	auto materials = game.data.character_get_inventory(cid, game.potion_material);
+	auto materials_target = game.data.ai_model_get_stockpile_target(ai_type, game.potion_material);
+
+	auto bottom_price = game.data.character_get_price_belief_buy(cid, game.prepared_food) / 5.f;
+
+	auto favourite_shop = game.data.character_get_favourite_shop(cid);
+	auto favourute_shopkeeper = game.data.building_get_owner_from_ownership(favourite_shop);
+	auto price_shop_buy = game.data.character_get_price_belief_buy(favourute_shopkeeper, game.potion);
+
+	return (produced - produced_target > 3 && price_shop_buy > bottom_price) || materials_target > materials;
+}
+
 }
 
 namespace update {
+
+void alchemist(state& game, dcon::character_id cid) {
+	auto body = game.data.character_get_body_from_embodiment(cid);
+	auto x = game.data.thing_get_x(body);
+	auto y = game.data.thing_get_y(body);
+	auto coins = game.data.character_get_inventory(cid, game.coins);
+	auto action = game.data.character_get_action_type(cid);
+	auto ai_type = game.data.character_get_ai_type(cid);
+
+	assert(ai_type == game.personality.alchemist);
+
+	auto favourite_shop = game.data.character_get_favourite_shop(cid);
+	auto favourite_inn = game.data.character_get_favourite_inn(cid);
+
+	auto favourute_shopkeeper = game.data.building_get_owner_from_ownership(favourite_shop);
+
+	if (!action) {
+		if (
+			ai::triggers::alchemist_desire_shopping(game, cid)
+		) {
+			game.data.character_set_action_type(cid, game.ai.shopping);
+		} else if (
+			ai::triggers::desire_buy_food(game, cid)
+		) {
+			game.data.character_set_action_type(cid, game.ai.getting_food);
+		} else {
+			game.data.character_set_action_type(cid, game.ai.working);
+		}
+		action = game.data.character_get_action_type(cid);
+	}
+
+	if (action == game.ai.shopping) {
+		if (!ai::triggers::alchemist_desire_shopping(game, cid)) {
+			ai::reset_action(game, cid);
+		}
+		auto move = move_to(game, body, favourite_shop);
+		return;
+	}
+	if (action == game.ai.getting_food) {
+		if (!ai::triggers::desire_buy_food(game, cid)) {
+			ai::reset_action(game, cid);
+		}
+		auto move = move_to(game, body, favourite_inn);
+		return;
+	}
+	if (action == game.ai.working) {
+		auto potion_price = game.data.character_get_price_belief_buy(favourute_shopkeeper, game.potion);
+		auto potion_material_cost = game.data.character_get_price_belief_sell(favourute_shopkeeper, game.potion_material);
+		if (
+			game.data.character_get_inventory(cid, game.potion_material) >= 1.f
+			&& potion_price > potion_material_cost * 2.f
+		) {
+			make_potion(game, cid);
+		} else {
+			ai::reset_action(game, cid);
+		}
+		return;
+	}
+	game.data.character_set_action_timer(cid, 0);
+}
 
 void hunter(state& game, dcon::character_id cid) {
 	auto body = game.data.character_get_body_from_embodiment(cid);
@@ -495,12 +588,12 @@ void hunter(state& game, dcon::character_id cid) {
 	auto favourite_shop = game.data.character_get_favourite_shop(cid);
 	auto favourite_inn = game.data.character_get_favourite_inn(cid);
 
-	auto loot  = game.data.character_get_inventory(cid, game.raw_food);
-	auto loot_target = game.data.ai_model_get_stockpile_target(ai_type, game.raw_food);
 
 
 	if (!action) {
-		if (loot - loot_target > 3) {
+		if (
+			ai::triggers::hunter_desire_shopping(game, cid)
+		) {
 			game.data.character_set_action_type(cid, game.ai.shopping);
 		} else if (
 			ai::triggers::desire_weapon_repair(game, cid, favourite_weapons_shop_owner)
@@ -512,7 +605,7 @@ void hunter(state& game, dcon::character_id cid) {
 		) {
 			game.data.character_set_action_type(cid, game.ai.prepare_food);
 		} else if (
-			ai::triggers::hunter_desire_buy_food(game, cid)
+			ai::triggers::desire_buy_food(game, cid)
 		) {
 			game.data.character_set_action_type(cid, game.ai.getting_food);
 		} else {
@@ -550,13 +643,13 @@ void hunter(state& game, dcon::character_id cid) {
 		}
 		return;
 	} else if (action == game.ai.shopping) {
-		if (loot < 3.f) {
+		if (!ai::triggers::hunter_desire_shopping(game, cid)) {
 			ai::reset_action(game, cid);
 		}
 		auto move = move_to(game, body, favourite_shop);
 		return;
 	} else if (action == game.ai.getting_food) {
-		if (!ai::triggers::hunter_desire_buy_food(game, cid)) {
+		if (!ai::triggers::desire_buy_food(game, cid)) {
 			ai::reset_action(game, cid);
 		}
 		auto move = move_to(game, body, favourite_inn);
@@ -806,17 +899,7 @@ void update(state& game) {
 		if (model == game.personality.hunter) {
 			ai::update::hunter(game, cid);
 		} else if (model == game.personality.alchemist) {
-			auto potion_price = game.data.character_get_price_belief_sell(cid, game.potion);
-			auto potion_material_cost = game.data.character_get_price_belief_buy(cid, game.potion_material);
-			if (
-				game.data.character_get_inventory(cid, game.potion_material) >= 1.f
-				&& potion_price > potion_material_cost * 2.f
-			) {
-				make_potion(game, cid);
-			}
-
-			auto timer = game.data.character_get_action_timer(cid);
-			game.data.character_set_action_timer(cid, timer + 1);
+			ai::update::alchemist(game, cid);
 		} else if (model == game.personality.herbalist) {
 			gather_potion_material(game, cid);
 
@@ -863,10 +946,18 @@ void update(state& game) {
 				}
 
 				auto shop = game.data.character_get_favourite_shop(cid);
+				auto action = game.ai.shopping;
+				if (commodity == game.prepared_food) {
+					shop = game.data.character_get_favourite_inn(cid);
+					action = game.ai.getting_food;
+				}
 
-				if (game.data.character_get_ai_type(cid) == game.personality.hunter) {
+				if (
+					game.data.character_get_ai_type(cid) == game.personality.hunter
+					|| game.data.character_get_ai_type(cid) == game.personality.alchemist
+				) {
 					auto guest_in = game.data.thing_get_guest_location_from_guest(body);
-					if (game.data.character_get_action_type(cid) != game.ai.shopping) {
+					if (game.data.character_get_action_type(cid) != action) {
 						return;
 					}
 
@@ -875,9 +966,6 @@ void update(state& game) {
 					}
 				}
 
-				if (commodity == game.prepared_food) {
-					shop = game.data.character_get_favourite_inn(cid);
-				}
 				auto shop_owner = game.data.building_get_owner_from_ownership(shop);
 				if (cid == shop_owner) {
 					return;
@@ -925,6 +1013,10 @@ void update(state& game) {
 						// } else {
 						// 	printf("But I have already ordered a lot\n");
 						// }
+					} else if (desired_price_buy >= price_shop_sell && in_stock >= 1.f) {
+						printf("I am buying %s with a loan\n", game::get_name(game, commodity).c_str());
+						transaction(game, shop_owner, cid, commodity, 1.f);
+						delayed_transaction(game, cid, shop_owner, game.coins, price_shop_sell);
 					}
 				}
 
@@ -932,11 +1024,11 @@ void update(state& game) {
 					// printf("I do not need this? %d %f %f %f\n", commodity.index(), desired_price_sell, price_shop_buy, in_stock );
 
 					if (price_shop_buy >= desired_price_sell && inventory >= 1.f && coins_shop >= price_shop_buy) {
-						printf("I am selling\n");
+						printf("I am selling %s\n", game::get_name(game, commodity).c_str());
 						transaction(game, cid, shop_owner, commodity, 1.f);
 						transaction(game, shop_owner, cid, game.coins, price_shop_buy);
 					} else if (price_shop_buy >= desired_price_sell && inventory >= 1.f) {
-						printf("I am selling for promise of future payment\n");
+						printf("I am selling %s for promise of future payment\n", game::get_name(game, commodity).c_str());
 						transaction(game, cid, shop_owner, commodity, 1.f);
 						delayed_transaction(game, shop_owner, cid, game.coins, price_shop_buy);
 					}
