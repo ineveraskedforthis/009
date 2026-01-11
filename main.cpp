@@ -1875,10 +1875,13 @@ int main(void)
 	glm::vec3 light_direction {0.5f, 0.5f, 0.5f};
 
 	glm::vec2 camera_speed = {};
+	int tick = 0;
+	float data[512] {};
 
 	double last_time = glfwGetTime();
 	while (!glfwWindowShouldClose(window))
 	{
+		tick++;
 
 		double time = glfwGetTime();
 		float dt = (float)(time - last_time);
@@ -1933,6 +1936,16 @@ int main(void)
 			ImGui::Text("counter = %d", counter);
 
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+			ImGui::End();
+		}
+
+		{
+			float total_debt = 0.f;
+			world.data.for_each_delayed_transaction([&](auto transaction){
+				total_debt += abs(world.data.delayed_transaction_get_balance(transaction, world.coins));
+			});
+			ImGui::Begin("Stats");
+			ImGui::Text("Total debt: %f", total_debt);
 			ImGui::End();
 		}
 
