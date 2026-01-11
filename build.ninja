@@ -85,8 +85,9 @@ build cache/imgui_stdlib.o: ccpp imgui/misc/cpp/imgui_stdlib.cpp | flags/imgui_c
 build cache/stb.o : ccpp stb_image/stb_image.c
 
 build flags/dcon_cloned : clone_dcon
-build DCON : compile_dcon flags/dcon_cloned
-build data.hpp | data_ids.hpp : use ./data.txt | DCON
+build DataContainer/CommonIncludes/common_types.cpp : phony flags/dcon_cloned
+build DCON.exe : compile_dcon flags/dcon_cloned
+build data.hpp | data_ids.hpp : use ./data.txt | DCON.exe
 build cache/dcon_common.o : ccpp DataContainer/CommonIncludes/common_types.cpp | flags/dcon_cloned
 build cache/frustum.o : ccpp frustum.cpp | flags/glm_cloned
 
