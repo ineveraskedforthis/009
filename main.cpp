@@ -16,7 +16,6 @@
 #include <vector>
 #include <random>
 
-
 #include "stb_image/stb_image.h"
 
 
@@ -1062,18 +1061,34 @@ void update(state& game) {
 
 
 	game.data.execute_parallel_over_thing([&](auto critter){
+		auto kind = game.data.thing_get_kind(critter);
+		auto speed = game.data.kind_get_speed(kind);
+
 		auto soul = game.data.thing_get_embodier_from_embodiment(critter);
+		auto following = game.data.thing_get_follow_target_as_follower(critter);
+		auto target = game.data.follow_target_get_followed(following);
 		auto x = game.data.thing_get_x(critter);
 		auto y = game.data.thing_get_y(critter);
+
+		auto cx = ve::select(target == dcon::thing_id{}, x, game.data.thing_get_x(target));
+		auto cy = ve::select(target == dcon::thing_id{}, y, game.data.thing_get_y(target));
+
 		auto alpha = game.data.thing_get_direction(critter);
 		auto dx = ve::apply([&](float alpha_v){return sin(alpha_v);}, alpha);
 		auto dy = ve::apply([&](float alpha_v){return -cos(alpha_v);}, alpha);
+
+		auto fdx = cx - x;
+		auto fdy = cy - y;
+
+		auto fn = ve::sqrt(fdx * fdx + fdy * fdy);
+
+		fdx = ve::select(fn > speed, fdx / fn, fdx) * 0.05f;
+		fdy = ve::select(fn > speed, fdy / fn, fdy) * 0.05f;
+
 		dx = ve::select(soul == dcon::character_id{}, dx * 0.05f, 0.f);
 		dy = ve::select(soul == dcon::character_id{}, dy * 0.05f, 0.f);
-		auto kind = game.data.thing_get_kind(critter);
-		auto speed = game.data.kind_get_speed(kind);
-		game.data.thing_set_x(critter, x + dx * speed);
-		game.data.thing_set_y(critter, y + dy * speed);
+		game.data.thing_set_x(critter, x + (dx + fdx) * speed);
+		game.data.thing_set_y(critter, y + (dy + fdy) * speed);
 	});
 
 	std::vector<dcon::thing_id> will_give_birth {};
