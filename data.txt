@@ -25,6 +25,10 @@ object{
 		type{uint32_t}
 	}
 	property{
+		name{dead_vao}
+		type{uint32_t}
+	}
+	property{
 		name{triangles_count}
 		type{uint32_t}
 	}

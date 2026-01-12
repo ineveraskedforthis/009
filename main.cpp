@@ -67,6 +67,8 @@ constexpr int WORLD_AREA = WORLD_SIZE * WORLD_SIZE;
 constexpr int WORLD_SIZE_TILES = CHUNK_SIZE * WORLD_SIZE;
 constexpr int WORLD_AREA_TILES = WORLD_SIZE_TILES * WORLD_SIZE_TILES;
 
+constexpr int spoilage_threshold = 30;
+
 struct vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
@@ -100,6 +102,7 @@ struct kinds {
 	dcon::kind_id meatbug_queen;
 	dcon::kind_id meatbug;
 	dcon::kind_id tree;
+	dcon::kind_id meatflower;
 };
 
 struct state {
@@ -698,6 +701,11 @@ void init(state& game) {
 	game.data.kind_set_size(rat, 0.5f);
 	game.data.kind_set_speed(rat, 0.8f);
 
+
+	game.special_kinds.meatflower = game.data.create_kind();
+	game.data.kind_set_size(game.special_kinds.meatflower, 0.1f);
+	game.data.kind_set_speed(game.special_kinds.meatflower, 0.0f);
+
 	game.special_kinds.meatbug = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.meatbug, 0.1f);
 	game.data.kind_set_speed(game.special_kinds.meatbug, 0.2f);
@@ -717,6 +725,7 @@ void init(state& game) {
 	game.data.force_create_food_hierarchy(game.special_kinds.human, game.special_kinds.meatbug);
 	game.data.force_create_food_hierarchy(game.special_kinds.human, rat);
 	game.data.force_create_food_hierarchy(rat, game.special_kinds.meatbug);
+	game.data.force_create_food_hierarchy(game.special_kinds.meatbug, game.special_kinds.meatflower);
 
 	{
 		game.personality.hunter = game.data.create_ai_model();
@@ -791,6 +800,8 @@ void init(state& game) {
 
 		auto innkeeper = game.data.create_character();
 		auto innkeeper_body = game.data.create_thing();
+		game.data.thing_set_hp(innkeeper_body, 100);
+		game.data.thing_set_hp_max(innkeeper_body, 100);
 		game.data.thing_set_kind(innkeeper_body, game.special_kinds.human);
 		game.data.force_create_embodiment(innkeeper, innkeeper_body);
 		game.data.character_set_inventory(innkeeper, game.coins, 100);
@@ -806,6 +817,8 @@ void init(state& game) {
 		game.data.building_set_building_model(shop, game.shop);
 		auto shop_owner = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_hp(body, 100);
+		game.data.thing_set_hp_max(body, 100);
 		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(shop_owner, body);
 		game.data.character_set_inventory(shop_owner, game.coins, 100);
@@ -820,6 +833,8 @@ void init(state& game) {
 		game.data.building_set_building_model(shop_weapons, game.shop_weapon);
 		auto weapon_master = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_hp(body, 100);
+		game.data.thing_set_hp_max(body, 100);
 		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(weapon_master, body);
 		game.data.character_set_inventory(weapon_master, game.coins, 10);
@@ -831,6 +846,8 @@ void init(state& game) {
 	for (int i = 0; i < 2; i++) {
 		auto alchemist = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_hp(body, 100);
+		game.data.thing_set_hp_max(body, 100);
 		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(alchemist, body);
 		game.data.character_set_inventory(alchemist, game.coins, 100);
@@ -840,6 +857,8 @@ void init(state& game) {
 	for (int i = 0; i < 2; i++) {
 		auto herbalist = game.data.create_character();
 		auto body = game.data.create_thing();
+		game.data.thing_set_hp(body, 100);
+		game.data.thing_set_hp_max(body, 100);
 		game.data.thing_set_kind(body, game.special_kinds.human);
 		game.data.force_create_embodiment(herbalist, body);
 		game.data.character_set_ai_type(herbalist, game.personality.herbalist);
@@ -890,6 +909,16 @@ void init(state& game) {
 		game.data.thing_set_x(thing, game.normal(game.rng) * 10.f  + forest_x);
 		game.data.thing_set_y(thing, game.normal(game.rng) * 10.f  + forest_y);
 		game.data.thing_set_direction(thing, game.uniform(game.rng) * glm::pi<float>() * 2);
+	}
+
+	for (int i = 0; i < 2000; i++) {
+		auto flower = game.data.create_thing();
+		game.data.thing_set_kind(flower, game.special_kinds.meatflower);
+		game.data.thing_set_hp(flower, 3);
+		game.data.thing_set_hp_max(flower, 3);
+		game.data.thing_set_x(flower, game.uniform(game.rng) * 100.f - 50.f);
+		game.data.thing_set_y(flower, game.uniform(game.rng) * 100.f - 50.f);
+		game.data.thing_set_direction(flower, game.uniform(game.rng) * glm::pi<float>() * 2);
 	}
 }
 
@@ -1020,7 +1049,7 @@ void update(state& game) {
 					}
 				}
 
-				if (target < inventory && price_shop_buy > bottom_price) {
+				if (target < inventory && price_shop_buy > bottom_price && in_stock < spoilage_threshold) {
 					// printf("I do not need this? %d %f %f %f\n", commodity.index(), desired_price_sell, price_shop_buy, in_stock );
 
 					if (price_shop_buy >= desired_price_sell && inventory >= 1.f && coins_shop >= price_shop_buy) {
@@ -1104,7 +1133,7 @@ void update(state& game) {
 				auto ai = game.data.character_get_ai_type(cid);
 				auto target = game.data.ai_model_get_stockpile_target(ai, commodity);
 
-				auto spoilage = (float)(int)(inventory / 20);
+				auto spoilage = (float)(int)(inventory / spoilage_threshold);
 
 				if (inventory > target * 2) {
 					auto price_decay_sell = exp(-inventory / target * 0.05f);
@@ -1193,9 +1222,12 @@ void update(state& game) {
 		}
 
 		auto kind = game.data.thing_get_kind(critter);
+		auto hunger = game.data.thing_get_hunger(critter);
 		if (kind == game.special_kinds.meatbug_queen) {
-			if (game.uniform(game.rng) < 0.01f) {
-				will_give_birth.push_back(critter);
+			if (hunger < 100) {
+				if (game.uniform(game.rng) < 0.01f) {
+					will_give_birth.push_back(critter);
+				}
 			}
 		}
 	});
@@ -1491,6 +1523,97 @@ base_triangle create_tree() {
 	return {vao, vbo};
 }
 
+static std::vector<game::vertex> flower_mesh;
+
+base_triangle create_flower() {
+	flower_mesh.clear();
+	int quality = 6;
+	float angle_step = 2.f * glm::pi<float>() / (float)quality;
+
+	for (int i = 0; i < quality; i++) {
+		float angle = (float)(i) * angle_step;
+		float next_angle = (float)(i + 1) * angle_step;
+		glm::vec3 left_bottom = {cos(angle), sin(angle), 0.f};
+		glm::vec3 right_bottom = {cos(next_angle), sin(next_angle),  0.f};
+		glm::vec3 top = 2.f * (left_bottom + right_bottom);
+		top.z = 0.3f;
+
+		auto top_to_left = left_bottom - top;
+		auto top_to_right = right_bottom - top;
+		auto normal = glm::cross(top_to_left, top_to_right);
+
+		flower_mesh.push_back({{right_bottom.x, right_bottom.y, right_bottom.z}, normal, {}});
+		flower_mesh.push_back({{left_bottom.x, left_bottom.y, left_bottom.z}, normal, {}});
+		flower_mesh.push_back({{top.x, top.y, top.z}, normal, {}});
+	}
+
+	GLuint vbo;
+	glGenBuffers(1, &vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, flower_mesh.size() * sizeof(game::vertex), flower_mesh.data(), GL_STATIC_DRAW);
+
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(0));
+
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3));
+
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3 + sizeof(float) * 3));
+
+	return {vao, vbo};
+}
+
+static std::vector<game::vertex> flower_used_mesh;
+
+base_triangle create_used_flower() {
+	flower_used_mesh.clear();
+	int quality = 6;
+	float angle_step = 2.f * glm::pi<float>() / (float)quality;
+
+	for (int i = 0; i < quality; i++) {
+		float angle = (float)(i) * angle_step;
+		float next_angle = (float)(i + 1) * angle_step;
+		glm::vec3 left_bottom = {cos(angle), sin(angle), 0.f};
+		glm::vec3 right_bottom = {cos(next_angle), sin(next_angle),  0.f};
+		glm::vec3 top = {0.f, 0.f, 0.4f};
+
+		auto top_to_left = left_bottom - top;
+		auto top_to_right = right_bottom - top;
+		auto normal = glm::cross(top_to_left, top_to_right);
+
+		flower_used_mesh.push_back({{right_bottom.x, right_bottom.y, right_bottom.z}, normal, {}});
+		flower_used_mesh.push_back({{left_bottom.x, left_bottom.y, left_bottom.z}, normal, {}});
+		flower_used_mesh.push_back({{top.x, top.y, top.z}, normal, {}});
+	}
+
+	GLuint vbo;
+	glGenBuffers(1, &vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, flower_used_mesh.size() * sizeof(game::vertex), flower_used_mesh.data(), GL_STATIC_DRAW);
+
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(0));
+
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3));
+
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(game::vertex),  reinterpret_cast<void*>(sizeof(float) * 3 + sizeof(float) * 3));
+
+	return {vao, vbo};
+}
+
 void generate_mesh_from_heightmap(game::map_state& data, int chunk_x, int chunk_y) {
 
 	auto chunk_index = (chunk_x + game::WORLD_RADIUS) * game::WORLD_SIZE + (chunk_y + game::WORLD_RADIUS);
@@ -1723,6 +1846,9 @@ int main(void)
 
 	auto triangle = create_triangle();
 	auto tree = create_tree();
+	auto flower = create_flower();
+	auto dead_flower = create_used_flower();
+
 
 
 	// setting up a basic shader
@@ -1844,11 +1970,14 @@ int main(void)
 	world.data.kind_set_vao(world.special_kinds.meatbug, triangle.vao);
 	world.data.kind_set_vao(world.special_kinds.meatbug_queen, triangle.vao);
 	world.data.kind_set_vao(world.special_kinds.tree, tree.vao);
+	world.data.kind_set_vao(world.special_kinds.meatflower, flower.vao);
+	world.data.kind_set_dead_vao(world.special_kinds.meatflower, dead_flower.vao);
 
 	world.data.kind_set_triangles_count(world.special_kinds.human, triangle_mesh.size());
 	world.data.kind_set_triangles_count(world.special_kinds.meatbug, triangle_mesh.size());
 	world.data.kind_set_triangles_count(world.special_kinds.meatbug_queen, triangle_mesh.size());
 	world.data.kind_set_triangles_count(world.special_kinds.tree, tree_mesh.size());
+	world.data.kind_set_triangles_count(world.special_kinds.meatflower, flower_mesh.size());
 
 	for (int i = 0; i < game::WORLD_AREA_TILES; i++) {
 		world.map.height[i] = 0;
@@ -2165,7 +2294,12 @@ int main(void)
 				auto rotation = world.data.thing_get_direction(cid);
 				model = glm::rotate(model, rotation, glm::vec3{0.f, 0.f, 1.f});
 				glUniformMatrix4fv(shadow_model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
-				glBindVertexArray(world.data.kind_get_vao(kind));
+				auto hp = world.data.thing_get_hp(cid);
+				if (hp > 0) {
+					glBindVertexArray(world.data.kind_get_vao(kind));
+				} else {
+					glBindVertexArray(world.data.kind_get_dead_vao(kind));
+				}
 				glDrawArrays(
 					GL_TRIANGLES,
 					0,
@@ -2173,6 +2307,8 @@ int main(void)
 				);
 			});
 		}
+
+		assert_no_errors();
 
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 		glfwGetFramebufferSize(window, &width, &height);
@@ -2218,6 +2354,8 @@ int main(void)
 		glUniform1i(shadow_layers_location, shadow_layers);
 		glUniformMatrix4fv(render_shadow_transform_location, shadow_layers, GL_FALSE, reinterpret_cast<float *>(shadow_projections.data()));
 
+		assert_no_errors();
+
 		for (auto & ch : world.map.meshes) {
 			glBindVertexArray(ch.vao);
 			glDrawArrays(
@@ -2226,6 +2364,8 @@ int main(void)
 				ch.data.size()
 			);
 		}
+
+		assert_no_errors();
 
 		world.data.for_each_thing([&] (dcon::thing_id cid) {
 			auto soul = world.data.thing_get_embodier_from_embodiment(cid);
@@ -2247,7 +2387,12 @@ int main(void)
 			auto rotation = world.data.thing_get_direction(cid);
 			model = glm::rotate(model, rotation, glm::vec3{0.f, 0.f, 1.f});
 			glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
-			glBindVertexArray(world.data.kind_get_vao(kind));
+			auto hp = world.data.thing_get_hp(cid);
+			if (hp > 0) {
+				glBindVertexArray(world.data.kind_get_vao(kind));
+			} else {
+				glBindVertexArray(world.data.kind_get_dead_vao(kind));
+			}
 			glDrawArrays(
 				GL_TRIANGLES,
 				0,
