@@ -17,6 +17,10 @@ object{
 		type{float}
 	}
 	property{
+		name{preserved_after_death}
+		type{bitfield}
+	}
+	property{
 		name{size}
 		type{float}
 	}

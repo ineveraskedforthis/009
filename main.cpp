@@ -171,6 +171,25 @@ std::string get_name (state& game, dcon::activity_id activity) {
 	return "Unknown " + std::to_string(activity.index());
 }
 
+enum class change_hp_result {
+	dead, alive
+};
+
+change_hp_result change_hp(state& game, dcon::thing_id target, int change) {
+	auto hp  = game.data.thing_get_hp(target);
+	game.data.thing_set_hp(target, hp + change);
+	if (hp + change > 0) {
+		return change_hp_result::alive;
+	} else {
+		auto kind = game.data.thing_get_kind(target);
+		auto preserve = game.data.kind_get_preserved_after_death(kind);
+		if (!preserve) {
+			game.data.delete_thing(target);
+		}
+		return change_hp_result::dead;
+	}
+}
+
 void transaction(state& game, dcon::character_id A, dcon::character_id B, dcon::commodity_id C, float amount) {
 	assert(amount >= 0.f);
 	auto i_A = game.data.character_get_inventory(A, C);
@@ -197,13 +216,16 @@ void delayed_transaction(state& game, dcon::character_id A, dcon::character_id B
 enum class move_result {
 	completed, failed, in_progress
 };
-constexpr float speed = 0.1f;
+
 move_result move_to(state& game, dcon::thing_id cid, float target_x, float target_y) {
 	auto x = game.data.thing_get_x(cid);
 	auto y = game.data.thing_get_y(cid);
 	auto dx = target_x - x;
 	auto dy = target_y - y;
 	auto distance = sqrtf(dx * dx + dy * dy);
+
+	auto kind = game.data.thing_get_kind(cid);
+	auto speed = game.data.kind_get_speed(kind);
 
 	if (distance < speed) {
 		game.data.thing_set_x(cid, target_x);
@@ -313,9 +335,9 @@ hunt_result hunt(state& game, dcon::thing_id hunter) {
 			game.data.character_set_weapon_quality(one_which_embodies, quality * 0.95f);
 		}
 
-		game.data.thing_set_hp(target, game.data.thing_get_hp(target) - damage);
+		auto result = change_hp(game, target, -damage);
 
-		if (game.data.thing_get_hp(target) <= 0.f) {
+		if (result == change_hp_result::dead) {
 			if (one_which_embodies) {
 				auto food = game.data.character_get_inventory(one_which_embodies, game.raw_food);
 				game.data.character_set_inventory(one_which_embodies, game.raw_food, food + 1.f);
@@ -323,7 +345,6 @@ hunt_result hunt(state& game, dcon::thing_id hunter) {
 				game.data.thing_set_hp(hunter, game.data.thing_get_hp(hunter) + 5);
 				game.data.thing_set_hunger(hunter, game.data.thing_get_hunger(hunter) - BASE_FOOD_NUTRITION);
 			}
-			game.data.delete_thing(target);
 			return hunt_result::success;
 		} else {
 			return  hunt_result::attacking_target;
@@ -574,6 +595,16 @@ void alchemist(state& game, dcon::character_id cid) {
 	game.data.character_set_action_timer(cid, 0);
 }
 
+void meatbug(state& game, dcon::thing_id body) {
+	auto hunger = game.data.thing_get_hunger(body);
+	if (hunger > 500) {
+		auto result = hunt(game, body);
+		if (result == hunt_result::success) {
+			game.data.thing_set_hunger(body, hunger - 300.f);
+		}
+	}
+}
+
 void hunter(state& game, dcon::character_id cid) {
 	auto body = game.data.character_get_body_from_embodiment(cid);
 	auto x = game.data.thing_get_x(body);
@@ -695,37 +726,42 @@ void init(state& game) {
 
 	game.special_kinds.human = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.human, 1.f);
-	game.data.kind_set_speed(game.special_kinds.human, 1.f);
+	game.data.kind_set_speed(game.special_kinds.human, 0.03f);
 
 	auto rat = game.data.create_kind();
 	game.data.kind_set_size(rat, 0.5f);
-	game.data.kind_set_speed(rat, 0.8f);
+	game.data.kind_set_speed(rat, 0.08f);
 
 
 	game.special_kinds.meatflower = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.meatflower, 0.1f);
 	game.data.kind_set_speed(game.special_kinds.meatflower, 0.0f);
+	game.data.kind_set_preserved_after_death(game.special_kinds.meatflower, true);
 
 	game.special_kinds.meatbug = game.data.create_kind();
-	game.data.kind_set_size(game.special_kinds.meatbug, 0.1f);
-	game.data.kind_set_speed(game.special_kinds.meatbug, 0.2f);
+	game.data.kind_set_size(game.special_kinds.meatbug, 0.4f);
+	game.data.kind_set_speed(game.special_kinds.meatbug, 0.02f);
 
 	game.special_kinds.meatbug_queen = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.meatbug_queen, 2.f);
-	game.data.kind_set_speed(game.special_kinds.meatbug_queen, 0.1f);
+	game.data.kind_set_speed(game.special_kinds.meatbug_queen, 0.01f);
 
 	game.special_kinds.potion_flower = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.potion_flower, 0.1f);
 	game.data.kind_set_speed(game.special_kinds.potion_flower, 0.f);
+	game.data.kind_set_preserved_after_death(game.special_kinds.potion_flower, true);
 
 	game.special_kinds.tree = game.data.create_kind();
 	game.data.kind_set_size(game.special_kinds.tree, 0.2f);
 	game.data.kind_set_speed(game.special_kinds.tree, 0.f);
+	game.data.kind_set_preserved_after_death(game.special_kinds.tree, true);
 
 	game.data.force_create_food_hierarchy(game.special_kinds.human, game.special_kinds.meatbug);
 	game.data.force_create_food_hierarchy(game.special_kinds.human, rat);
 	game.data.force_create_food_hierarchy(rat, game.special_kinds.meatbug);
 	game.data.force_create_food_hierarchy(game.special_kinds.meatbug, game.special_kinds.meatflower);
+	game.data.force_create_food_hierarchy(game.special_kinds.meatbug_queen, game.special_kinds.meatflower);
+	game.data.force_create_food_hierarchy(game.special_kinds.meatbug_queen, game.special_kinds.meatbug);
 
 	{
 		game.personality.hunter = game.data.create_ai_model();
@@ -1224,11 +1260,14 @@ void update(state& game) {
 		auto kind = game.data.thing_get_kind(critter);
 		auto hunger = game.data.thing_get_hunger(critter);
 		if (kind == game.special_kinds.meatbug_queen) {
-			if (hunger < 100) {
+			if (hunger < 1000) {
 				if (game.uniform(game.rng) < 0.01f) {
 					will_give_birth.push_back(critter);
 				}
 			}
+			ai::update::meatbug(game, critter);
+		} else if (kind == game.special_kinds.meatbug) {
+			ai::update::meatbug(game, critter);
 		}
 	});
 
@@ -1587,8 +1626,8 @@ base_triangle create_used_flower() {
 		auto top_to_right = right_bottom - top;
 		auto normal = glm::cross(top_to_left, top_to_right);
 
-		flower_used_mesh.push_back({{right_bottom.x, right_bottom.y, right_bottom.z}, normal, {}});
 		flower_used_mesh.push_back({{left_bottom.x, left_bottom.y, left_bottom.z}, normal, {}});
+		flower_used_mesh.push_back({{right_bottom.x, right_bottom.y, right_bottom.z}, normal, {}});
 		flower_used_mesh.push_back({{top.x, top.y, top.z}, normal, {}});
 	}
 
