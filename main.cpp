@@ -323,7 +323,7 @@ hunt_result hunt(state& game, dcon::thing_id hunter) {
 
 	auto d = (tx - x) * (tx - x) + (ty - y) * (ty - y);
 
-	if (d < 1.f) {
+	if (d < 0.2f) {
 		auto one_which_embodies = game.data.thing_get_embodier_from_embodiment(hunter);
 
 		auto damage = 10;
@@ -345,9 +345,10 @@ hunt_result hunt(state& game, dcon::thing_id hunter) {
 				game.data.thing_set_hp(hunter, game.data.thing_get_hp(hunter) + 5);
 				game.data.thing_set_hunger(hunter, game.data.thing_get_hunger(hunter) - BASE_FOOD_NUTRITION);
 			}
+			game.data.delete_hunt_target(selection);
 			return hunt_result::success;
 		} else {
-			return  hunt_result::attacking_target;
+			return hunt_result::attacking_target;
 		}
 	} else {
 		move_to(game, hunter, tx, ty);
@@ -601,6 +602,7 @@ void meatbug(state& game, dcon::thing_id body) {
 		auto result = hunt(game, body);
 		if (result == hunt_result::success) {
 			game.data.thing_set_hunger(body, hunger - 300.f);
+
 		}
 	}
 }
@@ -1268,6 +1270,12 @@ void update(state& game) {
 			ai::update::meatbug(game, critter);
 		} else if (kind == game.special_kinds.meatbug) {
 			ai::update::meatbug(game, critter);
+		} else if (kind == game.special_kinds.meatflower) {
+			auto hp = game.data.thing_get_hp(critter);
+			auto hp_max = game.data.thing_get_hp_max(critter);
+			if (game.uniform(game.rng) < 0.05f) {
+				game.data.thing_set_hp(critter, std::min(hp + 1, hp_max));
+			}
 		}
 	});
 
