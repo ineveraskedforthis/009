@@ -991,6 +991,9 @@ void update(state& game) {
 	game.data.for_each_thing([&](auto id) {
 		auto hunger = game.data.thing_get_hunger(id);
 		game.data.thing_set_hunger(id, hunger + 1);
+		if (game.data.thing_get_hunger(id) > 10000) {
+			game.data.delete_thing(id);
+		}
 	});
 
 	// trade:
