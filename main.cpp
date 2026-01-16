@@ -55,7 +55,7 @@ struct ai_personality {
 	dcon::ai_model_id shopkeeper;
 };
 
-constexpr inline float BASE_FOOD_NUTRITION = 250.f;
+constexpr inline float BASE_FOOD_NUTRITION = 2000.f;
 
 constexpr int CHUNK_SIZE = 32;
 constexpr int CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
@@ -989,10 +989,13 @@ void update(state& game) {
 	});
 
 	game.data.for_each_thing([&](auto id) {
-		auto hunger = game.data.thing_get_hunger(id);
-		game.data.thing_set_hunger(id, hunger + 1);
-		if (game.data.thing_get_hunger(id) > 10000) {
-			game.data.delete_thing(id);
+		auto kind = game.data.thing_get_kind(id);
+		if (!game.data.kind_get_preserved_after_death(kind)) {
+			auto hunger = game.data.thing_get_hunger(id);
+			game.data.thing_set_hunger(id, hunger + 1);
+			if (game.data.thing_get_hunger(id) > 10000) {
+				game.data.delete_thing(id);
+			}
 		}
 	});
 
@@ -1145,7 +1148,7 @@ void update(state& game) {
 
 	game.data.for_each_character([&](auto cid) {
 		auto body = game.data.character_get_body_from_embodiment(cid);
-		if (game.data.thing_get_hunger(body) > 250.f) {
+		if (game.data.thing_get_hunger(body) > BASE_FOOD_NUTRITION * 1.5f) {
 			eat(game, cid);
 		}
 		drink_potion(game, cid);
