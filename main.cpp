@@ -636,7 +636,7 @@ void hunter(state& game, dcon::character_id cid) {
 		) {
 			game.data.character_set_action_type(cid, game.ai.weapon_repair);
 		} else if (
-			game.data.thing_get_hunger(body) > 200
+			game.data.thing_get_hunger(body) > BASE_FOOD_NUTRITION * 3
 			&& game.data.character_get_inventory(cid, game.raw_food) >= 1.f
 		) {
 			game.data.character_set_action_type(cid, game.ai.prepare_food);
@@ -1057,8 +1057,20 @@ void update(state& game) {
 
 				auto bottom_price = game.data.character_get_price_belief_buy(cid, game.prepared_food) / 5.f;
 
+				float ordered = 0.f;
+				auto delayed = game.data.get_delayed_transaction_by_transaction_pair(shop_owner, cid);
+				if (delayed) {
+					auto A = game.data.delayed_transaction_get_members(delayed, 0);
+					auto B = game.data.delayed_transaction_get_members(delayed, 1);
+					auto debt = game.data.delayed_transaction_get_balance(delayed, commodity);
+					auto mult = 1.f;
+					if (A != shop_owner) {
+						mult = -1.f;
+					}
+					ordered += debt * mult;
+				}
 
-				if (target > inventory) {
+				if (target > inventory + ordered) {
 					// printf("I need this? %d %f %f %f\n", commodity.index(), desired_price_buy, price_shop_sell, in_stock );
 					if (desired_price_buy >= price_shop_sell && in_stock >= 1.f && coins >= price_shop_sell) {
 						printf("I am buying %s\n", game::get_name(game, commodity).c_str());
@@ -1069,16 +1081,7 @@ void update(state& game) {
 						auto delayed = game.data.get_delayed_transaction_by_transaction_pair(cid, shop_owner);
 						bool already_indebted = false;
 						if (delayed) {
-							auto A = game.data.delayed_transaction_get_members(delayed, 0);
-							auto B = game.data.delayed_transaction_get_members(delayed, 1);
-							auto debt = game.data.delayed_transaction_get_balance(delayed, commodity);
-							auto mult = 1.f;
-							if (A != shop_owner) {
-								mult = -1.f;
-							}
-							if (debt * mult > 3) {
-								already_indebted = true;
-							}
+
 						}
 						delayed_transaction(game, shop_owner, cid, commodity, 1.f);
 						transaction(game, cid, shop_owner, game.coins, price_shop_sell);
